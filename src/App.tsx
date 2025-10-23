@@ -1,35 +1,25 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import Home from "./pages/Home";
+import CrowdMap from "./pages/CrowdMap";
+import Transit from "./pages/Transit";
+import Parking from "./pages/Parking";
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <BrowserRouter>
+      <nav>
+        <Link to="/">홈</Link> |<Link to="/crowd">인파</Link> |
+        <Link to="/transit">교통</Link> |<Link to="/parking">주차</Link>
+      </nav>
+
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/crowd" element={<CrowdMap />} />
+        <Route path="/transit" element={<Transit />} />
+        <Route path="/parking" element={<Parking />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;
