@@ -39,6 +39,7 @@ export interface ParkingLot {
   longitude: number;
   operatingTime: string;
   updatedAt: string;
+  distance?: number; // km 단위
 }
 
 export interface RankingItem {
@@ -48,4 +49,24 @@ export interface RankingItem {
   totalVisits: number;
   rank: number;
   peakHour?: number;
+}
+
+// 히스토리 타임시리즈 데이터
+export interface HistoryTimeseries {
+  timestamp: string | Date;
+  peopleCount: number;
+  congestionLevel: number;
+}
+
+// 히스토리 API 응답
+export interface CrowdHistoryResponse {
+  areaCode: string;
+  areaName: string;
+  period: string;
+  dataCount: number;
+  timeseries: HistoryTimeseries[];
+  average: {
+    peopleCount: number;
+    congestionLevel: number;
+  };
 }

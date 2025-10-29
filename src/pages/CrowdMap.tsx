@@ -1,17 +1,46 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { crowdApi } from '../api/services';
-import type { CrowdData } from '../api/types';
+import { crowdApi, areaApi } from '../api/services';
+import type { CrowdData, AreaInfo } from '../api/types';
 
 function CrowdMap() {
   const [crowdData, setCrowdData] = useState<CrowdData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('all');
+  const [categories, setCategories] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('전체');
+  const [categoryAreas, setCategoryAreas] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetchCrowdData();
+    fetchInitialData();
   }, []);
+
+  const fetchInitialData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('👥 인파 데이터 및 카테고리 요청 중...');
+      
+      // 인파 데이터와 카테고리를 병렬로 가져오기
+      const [crowdDataResult, categoriesResult] = await Promise.all([
+        crowdApi.getAll(),
+        areaApi.getCategories().catch(() => []) // 실패해도 계속 진행
+      ]);
+      
+      console.log('✅ 인파 데이터 수신:', crowdDataResult);
+      console.log('✅ 카테고리 수신:', categoriesResult);
+      
+      setCrowdData(crowdDataResult);
+      setCategories(categoriesResult);
+      setLoading(false);
+    } catch (err) {
+      const error = err as Error;
+      console.error('❌ 데이터 로딩 실패:', error);
+      setError(error.message || '데이터를 불러올 수 없습니다.');
+      setLoading(false);
+    }
+  };
 
   const fetchCrowdData = async () => {
     try {
@@ -29,6 +58,28 @@ function CrowdMap() {
       console.error('❌ 인파 데이터 로딩 실패:', error);
       setError(error.message || '데이터를 불러올 수 없습니다.');
       setLoading(false);
+    }
+  };
+
+  const handleCategoryChange = async (category: string) => {
+    setSelectedCategory(category);
+    
+    if (category === '전체') {
+      setCategoryAreas(new Set());
+      return;
+    }
+
+    try {
+      console.log(`📂 ${category} 카테고리 지역 조회 중...`);
+      const areas: AreaInfo[] = await areaApi.getByCategory(category);
+      console.log('✅ 카테고리별 지역 수신:', areas);
+      
+      const areaCodeSet = new Set(areas.map(area => area.areaCode));
+      setCategoryAreas(areaCodeSet);
+    } catch (err) {
+      console.error('❌ 카테고리별 지역 조회 실패:', err);
+      // 실패해도 빈 Set으로 처리
+      setCategoryAreas(new Set());
     }
   };
 
@@ -67,9 +118,18 @@ function CrowdMap() {
     return colors[level] || 'bg-gray-100 text-gray-800';
   };
 
-  const filteredData = filter === 'all' 
-    ? crowdData 
-    : crowdData.filter(item => getCongestionLevel(item.data) === filter);
+  // 카테고리와 혼잡도 필터를 모두 적용
+  let filteredData = crowdData;
+  
+  // 카테고리 필터 적용
+  if (selectedCategory !== '전체' && categoryAreas.size > 0) {
+    filteredData = filteredData.filter(item => categoryAreas.has(item.areaCode));
+  }
+  
+  // 혼잡도 필터 적용
+  if (filter !== 'all') {
+    filteredData = filteredData.filter(item => getCongestionLevel(item.data) === filter);
+  }
 
   const congestionCounts = {
     '여유': crowdData.filter(item => getCongestionLevel(item.data) === '여유').length,
@@ -126,7 +186,44 @@ function CrowdMap() {
           <p className="text-gray-600 mt-2">서울시 주요 지역 실시간 인파 현황</p>
         </div>
 
-        {/* 통계 카드 */}
+        {/* 카테고리 필터 */}
+        {categories.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-4 mb-6">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+              </svg>
+              <span className="font-semibold text-gray-700">카테고리</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleCategoryChange('전체')}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                  selectedCategory === '전체'
+                    ? 'bg-blue-500 text-white shadow-md'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                전체
+              </button>
+              {categories.map(category => (
+                <button
+                  key={category}
+                  onClick={() => handleCategoryChange(category)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                    selectedCategory === category
+                      ? 'bg-blue-500 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 통계 카드 (혼잡도 필터) */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
           <div 
             className={`bg-white rounded-lg shadow p-4 cursor-pointer transition-all ${filter === 'all' ? 'ring-2 ring-blue-500' : ''}`}
@@ -172,12 +269,21 @@ function CrowdMap() {
             const message = getCongestionMessage(item.data);
             
             return (
-              <div key={item.areaCode} className="bg-white rounded-lg shadow hover:shadow-md transition-shadow p-4">
+              <Link
+                key={item.areaCode}
+                to={`/crowd/${item.areaCode}`}
+                className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-4 cursor-pointer"
+              >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <h3 className="font-bold text-gray-800 text-lg">{item.areaInfo.areaName}</h3>
                     {item.areaInfo.engName && (
                       <p className="text-xs text-gray-500">{item.areaInfo.engName}</p>
+                    )}
+                    {item.areaInfo.category && (
+                      <span className="inline-block mt-1 text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                        {item.areaInfo.category}
+                      </span>
                     )}
                   </div>
                   <span className={`${getCongestionBadgeColor(level)} text-xs font-semibold px-3 py-1 rounded-full`}>
@@ -221,22 +327,25 @@ function CrowdMap() {
 
                   {/* 액션 버튼 */}
                   <div className="pt-3 border-t mt-3">
-                    <Link
-                      to={`/history/${item.areaCode}`}
-                      className="block w-full bg-blue-500 text-white text-center py-2 rounded-lg hover:bg-blue-600 transition text-xs"
-                    >
-                      📊 히스토리
-                    </Link>
+                    <div className="flex gap-2">
+                      <div className="flex-1 bg-blue-500 text-white text-center py-2 rounded-lg hover:bg-blue-600 transition text-xs font-medium">
+                        📊 상세 정보
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>
 
         {filteredData.length === 0 && (
           <div className="bg-white rounded-lg shadow p-8 text-center">
-            <p className="text-gray-600">해당 혼잡도 레벨의 지역이 없습니다.</p>
+            <p className="text-gray-600">
+              {selectedCategory !== '전체' 
+                ? `${selectedCategory} 카테고리에 해당하는 지역이 없습니다.`
+                : '해당 혼잡도 레벨의 지역이 없습니다.'}
+            </p>
           </div>
         )}
       </div>

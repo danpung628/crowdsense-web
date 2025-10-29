@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { crowdApi } from '../api/services';
@@ -21,36 +21,47 @@ function HistoryView() {
   const [areaInfo, setAreaInfo] = useState<AreaInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (areaCode) {
-      fetchHistoryData();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [areaCode]);
-
-  const fetchHistoryData = async () => {
+  const fetchHistoryData = useCallback(async () => {
     try {
       setLoading(true);
       // API에서 히스토리 데이터 가져오기
-      const data = await crowdApi.getHistory(areaCode!, 24);
+      const response = await crowdApi.getHistory(areaCode!, 24);
+      
+      console.log('📊 히스토리 응답:', response);
       
       // 데이터 포맷팅
-      const formattedData = data.map((item: { fetchedAt: string; data?: { AREA_PPLTN_MIN?: number; AREA_CONGEST_LVL?: string } }) => ({
-        timestamp: new Date(item.fetchedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-        population: item.data?.AREA_PPLTN_MIN || 0,
-        level: item.data?.AREA_CONGEST_LVL || '보통',
+      const formattedData = response.timeseries.map((item) => ({
+        timestamp: new Date(item.timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+        population: item.peopleCount,
+        level: getCongestionLevelName(item.congestionLevel),
       }));
 
       setHistoryData(formattedData);
-      if (data.length > 0) {
-        setAreaInfo(data[0].areaInfo);
-      }
+      setAreaInfo({
+        areaName: response.areaName,
+        category: '',
+      });
     } catch (error) {
       console.error('Failed to fetch history:', error);
     } finally {
       setLoading(false);
     }
+  }, [areaCode]);
+
+  // 혼잡도 레벨을 이름으로 변환
+  const getCongestionLevelName = (level: number): string => {
+    if (level >= 5) return '매우 혼잡';
+    if (level >= 4) return '혼잡';
+    if (level >= 3) return '보통';
+    if (level >= 2) return '여유';
+    return '한산';
   };
+
+  useEffect(() => {
+    if (areaCode) {
+      fetchHistoryData();
+    }
+  }, [areaCode, fetchHistoryData]);
 
   if (loading) {
     return (

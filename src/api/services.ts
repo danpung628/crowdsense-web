@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { AreaInfo, CrowdData, SubwayStation, ParkingLot, RankingItem } from './types';
+import type { AreaInfo, CrowdData, SubwayStation, ParkingLot, RankingItem, CrowdHistoryResponse } from './types';
 
 // 인파 API
 export const crowdApi = {
@@ -30,7 +30,7 @@ export const crowdApi = {
   getHistory: async (
     areaCode: string,
     hours: number = 24
-  ): Promise<CrowdData[]> => {
+  ): Promise<CrowdHistoryResponse> => {
     const response = await apiClient.get(`/crowds/${areaCode}/history`, {
       params: { hours },
     });
@@ -112,8 +112,14 @@ export const parkingApi = {
     radius: number = 1000
   ): Promise<ParkingLot[]> => {
     const response = await apiClient.get('/parking/nearby', {
-      params: { latitude, longitude, radius },
+      params: { lat: latitude, lng: longitude, radius },
     });
+    return response.data.data || response.data;
+  },
+
+  // 구별 주차장 조회
+  getByDistrict: async (district: string): Promise<ParkingLot[]> => {
+    const response = await apiClient.get(`/parking/district/${district}`);
     return response.data.data || response.data;
   },
 
@@ -137,6 +143,12 @@ export const areaApi = {
   // 특정 지역 조회
   getByCode: async (areaCode: string): Promise<AreaInfo> => {
     const response = await apiClient.get(`/areas/${areaCode}`);
+    return response.data.data || response.data;
+  },
+
+  // 카테고리 목록 조회
+  getCategories: async (): Promise<string[]> => {
+    const response = await apiClient.get('/areas/categories');
     return response.data.data || response.data;
   },
 
@@ -179,7 +191,8 @@ export const rankingApi = {
         .slice(0, limit * 2)
         .map((crowd: CrowdData) => {
           // 데이터 구조: data['SeoulRtd.citydata_ppltn'][0]
-          const cityData = crowd.data?.['SeoulRtd.citydata_ppltn']?.[0];
+          const cityDataArray = crowd.data?.['SeoulRtd.citydata_ppltn'] as Array<Record<string, string>> | undefined;
+          const cityData = cityDataArray?.[0];
           const populationMin = parseInt(cityData?.AREA_PPLTN_MIN || '0');
           const populationMax = parseInt(cityData?.AREA_PPLTN_MAX || '0');
           const avgPopulation = Math.floor((populationMin + populationMax) / 2);

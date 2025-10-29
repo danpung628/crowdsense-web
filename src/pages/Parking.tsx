@@ -2,11 +2,25 @@ import { useEffect, useState } from 'react';
 import { parkingApi } from '../api/services';
 import type { ParkingLot } from '../api/types';
 
+const SEOUL_DISTRICTS = [
+  '전체', '강남구', '강동구', '강북구', '강서구', '관악구', '광진구', 
+  '구로구', '금천구', '노원구', '도봉구', '동대문구', '동작구', '마포구', 
+  '서대문구', '서초구', '성동구', '성북구', '송파구', '양천구', '영등포구', 
+  '용산구', '은평구', '종로구', '중구', '중랑구'
+];
+
 function Parking() {
   const [parkingLots, setParkingLots] = useState<ParkingLot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDistrict, setSelectedDistrict] = useState('전체');
+  
+  // 가까운 주차장 찾기 관련 상태
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [nearbyError, setNearbyError] = useState<string | null>(null);
+  const [selectedRadius, setSelectedRadius] = useState(1);
+  const [showNearbyResults, setShowNearbyResults] = useState(false);
 
   useEffect(() => {
     fetchParkingData();
@@ -16,6 +30,7 @@ function Parking() {
     try {
       setLoading(true);
       setError(null);
+      setShowNearbyResults(false);
       console.log('🅿️ 주차장 데이터 요청 중...');
       
       const data = await parkingApi.getAll();
@@ -43,6 +58,93 @@ function Parking() {
     );
     
     setParkingLots(filtered);
+  };
+
+  const handleDistrictChange = async (district: string) => {
+    setSelectedDistrict(district);
+    setShowNearbyResults(false);
+    
+    if (district === '전체') {
+      fetchParkingData();
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      console.log(`🅿️ ${district} 주차장 데이터 요청 중...`);
+      
+      const data = await parkingApi.getByDistrict(district);
+      console.log('✅ 구별 주차장 데이터 수신:', data);
+      
+      setParkingLots(data);
+      setLoading(false);
+    } catch (err) {
+      const error = err as Error;
+      console.error('❌ 구별 주차장 데이터 로딩 실패:', error);
+      setError(error.message || '데이터를 불러올 수 없습니다.');
+      setLoading(false);
+    }
+  };
+
+  const handleFindNearby = async () => {
+    if (!navigator.geolocation) {
+      setNearbyError('이 브라우저는 위치 정보를 지원하지 않습니다.');
+      return;
+    }
+
+    setNearbyLoading(true);
+    setNearbyError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          console.log(`📍 현재 위치: ${latitude}, ${longitude}`);
+          console.log(`🔍 반경 ${selectedRadius}km 내 주차장 검색 중...`);
+
+          const data = await parkingApi.getNearby(
+            latitude,
+            longitude,
+            selectedRadius * 1000 // km를 m로 변환
+          );
+          
+          console.log('✅ 근처 주차장 데이터 수신:', data);
+          setParkingLots(data);
+          setShowNearbyResults(true);
+          setNearbyLoading(false);
+        } catch (err) {
+          const error = err as Error;
+          console.error('❌ 근처 주차장 검색 실패:', error);
+          setNearbyError(error.message || '주차장을 찾을 수 없습니다.');
+          setNearbyLoading(false);
+        }
+      },
+      (err) => {
+        console.error('❌ 위치 정보 가져오기 실패:', err);
+        
+        let errorMessage = '위치 정보를 가져올 수 없습니다.';
+        switch (err.code) {
+          case err.PERMISSION_DENIED:
+            errorMessage = '위치 권한이 거부되었습니다. 브라우저 설정에서 위치 권한을 허용해주세요.';
+            break;
+          case err.POSITION_UNAVAILABLE:
+            errorMessage = '위치 정보를 사용할 수 없습니다.';
+            break;
+          case err.TIMEOUT:
+            errorMessage = '위치 정보 요청 시간이 초과되었습니다.';
+            break;
+        }
+        
+        setNearbyError(errorMessage);
+        setNearbyLoading(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
   };
 
   const getAvailabilityColor = (available: number, total: number) => {
@@ -107,9 +209,9 @@ function Parking() {
           <p className="text-gray-600 mt-2">서울시 공영주차장 실시간 현황</p>
         </div>
 
-        {/* 검색 바 */}
+        {/* 검색 바 및 구 선택 */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <div className="flex gap-2">
+          <div className="flex flex-col md:flex-row gap-2">
             <input
               type="text"
               value={searchQuery}
@@ -118,6 +220,15 @@ function Parking() {
               placeholder="주차장 주소 또는 구로 검색..."
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <select
+              value={selectedDistrict}
+              onChange={(e) => handleDistrictChange(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              {SEOUL_DISTRICTS.map(district => (
+                <option key={district} value={district}>{district}</option>
+              ))}
+            </select>
             <button
               onClick={handleSearch}
               className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-2 rounded-lg transition duration-200"
@@ -136,6 +247,75 @@ function Parking() {
               </button>
             )}
           </div>
+        </div>
+
+        {/* 가까운 주차장 찾기 섹션 */}
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg shadow p-6 mb-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">📍 내 위치에서 가까운 주차장 찾기</h2>
+          
+          <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-700 font-medium">반경:</label>
+              <select
+                value={selectedRadius}
+                onChange={(e) => setSelectedRadius(Number(e.target.value))}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value={1}>1km</option>
+                <option value={3}>3km</option>
+                <option value={5}>5km</option>
+              </select>
+            </div>
+
+            <button
+              onClick={handleFindNearby}
+              disabled={nearbyLoading}
+              className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-semibold px-6 py-2 rounded-lg transition duration-200 flex items-center gap-2"
+            >
+              {nearbyLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  검색 중...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  주변 주차장 찾기
+                </>
+              )}
+            </button>
+
+            {showNearbyResults && (
+              <button
+                onClick={fetchParkingData}
+                className="bg-gray-500 hover:bg-gray-600 text-white font-semibold px-4 py-2 rounded-lg transition duration-200"
+              >
+                전체 보기
+              </button>
+            )}
+          </div>
+
+          {nearbyError && (
+            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm text-red-700">{nearbyError}</p>
+              </div>
+            </div>
+          )}
+
+          {showNearbyResults && parkingLots.length > 0 && (
+            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-700">
+                ✅ 반경 {selectedRadius}km 내 주차장 {parkingLots.length}개를 찾았습니다.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* 통계 카드 */}
@@ -202,25 +382,38 @@ function Parking() {
                     <div className="text-sm text-gray-500">정보 없음</div>
                   )}
 
+                  {lot.distance !== undefined && (
+                    <div className="flex items-center justify-between text-sm pt-2 border-t">
+                      <span className="text-gray-600">거리:</span>
+                      <span className="font-semibold text-blue-600">
+                        {lot.distance < 1 
+                          ? `${(lot.distance * 1000).toFixed(0)}m` 
+                          : `${lot.distance.toFixed(2)}km`}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between text-sm pt-2">
                     <span className="text-gray-600">요금:</span>
-                    <span className={`font-semibold ${lot.fee.includes('무료') ? 'text-green-600' : 'text-orange-600'}`}>
-                      {lot.fee}
+                    <span className={`font-semibold ${lot.fee?.includes('무료') ? 'text-green-600' : 'text-orange-600'}`}>
+                      {lot.fee || '정보 없음'}
                     </span>
                   </div>
 
                   <div className="text-xs text-gray-500 pt-1">
-                    운영시간: {lot.operatingTime}
+                    운영시간: {lot.operatingTime || '정보 없음'}
                   </div>
                   
-                  <div className="text-xs text-gray-500">
-                    업데이트: {new Date(lot.updatedAt).toLocaleString('ko-KR', {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </div>
+                  {lot.updatedAt && (
+                    <div className="text-xs text-gray-500">
+                      업데이트: {new Date(lot.updatedAt).toLocaleString('ko-KR', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
