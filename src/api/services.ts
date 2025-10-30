@@ -225,9 +225,41 @@ export const rankingApi = {
     period: 'day' | 'week' | 'month',
     limit: number = 10
   ): Promise<RankingItem[]> => {
-    // 임시: getTopPlaces와 동일한 로직 사용 (기간 구분 없이)
-    // TODO: 인증 구현 후 실제 백엔드 API 연동
-    console.log(`📊 ${period} 랭킹 요청 (임시 목 데이터 사용)`);
-    return rankingApi.getTopPlaces(limit);
+    try {
+      // 기간을 시간으로 변환
+      const hoursMap: Record<'day' | 'week' | 'month', number> = {
+        day: 24,
+        week: 168,   // 7일
+        month: 720   // 30일
+      };
+      
+      const hours = hoursMap[period];
+      console.log(`📊 ${period} 랭킹 요청 (hours: ${hours})`);
+      
+      // 백엔드 API 호출
+      const response = await apiClient.get('/rankings/popular', {
+        params: { limit, hours }
+      });
+      
+      // 응답 구조: { success, data: [...] }
+      const responseData = response.data.data || response.data;
+      const rankings = Array.isArray(responseData) ? responseData : [];
+      
+      // 백엔드 응답 형식을 프론트엔드 타입으로 변환
+      // 백엔드: { rank, areaCode, areaName, category, avgPeople, maxPeople, avgCongestion }
+      // 프론트엔드: { rank, areaCode, areaName, avgPopulation, totalVisits, peakHour? }
+      return rankings.map((item: { rank?: number; areaCode: string; areaName: string; avgPeople?: number; maxPeople?: number }) => ({
+        rank: item.rank || 0,
+        areaCode: item.areaCode,
+        areaName: item.areaName,
+        avgPopulation: item.avgPeople || 0,
+        totalVisits: item.maxPeople || item.avgPeople || 0,
+        peakHour: undefined // 백엔드에 피크타임 정보가 없으면 undefined
+      }));
+    } catch (error) {
+      console.warn('⚠️ 랭킹 API 호출 실패, 임시 목 데이터로 대체:', error);
+      // 에러 발생 시 기존 목 데이터 사용
+      return rankingApi.getTopPlaces(limit);
+    }
   },
 };
